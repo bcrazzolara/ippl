@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+using namespace std;
+
 #include "FieldContainer.hpp"
 #include "FieldSolver.hpp"
 #include "LoadBalancer.hpp"
@@ -381,6 +383,7 @@ public:
 
         // Second Part 
         // ####################################
+        /*
         ifstream file("Data.csv");
 
         // Check if the file is opened successfully
@@ -429,7 +432,7 @@ public:
             data.push_back(row);
         }
         // ############################################
-
+        */
 
         /*
 
