@@ -1,5 +1,3 @@
-// algitht
-
 #ifndef IPPL_FIELD_CONTAINER_H
 #define IPPL_FIELD_CONTAINER_H
 
