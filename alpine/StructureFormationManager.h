@@ -1,5 +1,3 @@
-//alright
-
 #ifndef IPPL_STRUCTURE_FORMATION_MANAGER_H
 #define IPPL_STRUCTURE_FORMATION_MANAGER_H
 
@@ -11,16 +9,14 @@
 #include <vector>
 
 using namespace std;
-
 constexpr float G = 4.3009e-09; // Mpc km^2 /s^2 M_Sun
 
-#include "GravityFieldContainer.hpp" // done
+#include "GravityFieldContainer.hpp"
 #include "GravityFieldSolver.hpp"
-#include "GravityLoadBalancer.hpp" // done
-#include "GravityManager.h"  // done
-
+#include "GravityLoadBalancer.hpp"
+#include "GravityManager.h"
 #include "Manager/BaseManager.h"
-#include "GravityParticleContainer.hpp" // one
+#include "GravityParticleContainer.hpp"
 #include "Random/Distribution.h"
 #include "Random/InverseTransformSampling.h"
 #include "Random/NormalDistribution.h"
@@ -125,14 +121,7 @@ public:
     void readParticles() {
         Inform mes("Reading Particles");
 
-<<<<<<< HEAD
         ifstream file("data/Data.csv");
-=======
-        // Second Part 
-        // ####################################
-        /*
-        ifstream file("Data.csv");
->>>>>>> 3c90638159900b72c3f3a9dd9429b3b534959acf
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
@@ -244,22 +233,10 @@ public:
                 P_host(i)[d] = ParticleVelocities[i][d];
             }
         }
-<<<<<<< HEAD
         // Copy to device
         Kokkos::deep_copy(this->pcontainer_m->R.getView(), R_host);
         Kokkos::deep_copy(this->pcontainer_m->P.getView(), P_host);
         mes << "assignment done. " << endl;
-=======
-        // ############################################
-        */
-
-        /*
-
-        // Sample particle positions:
-        ippl::detail::RegionLayout<double, Dim, Mesh_t<Dim>> rlayout;
-        rlayout = ippl::detail::RegionLayout<double, Dim, Mesh_t<Dim>>( *FL, *mesh );
-
->>>>>>> 3c90638159900b72c3f3a9dd9429b3b534959acf
         */
 
     }
