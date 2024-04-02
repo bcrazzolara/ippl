@@ -7,9 +7,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <iomanip>
 
 using namespace std;
-constexpr float G = 4.3009e-09; // Mpc km^2 /s^2 M_Sun
 
 #include "GravityFieldContainer.hpp"
 #include "GravityFieldSolver.hpp"
@@ -51,24 +51,23 @@ public:
             this->domain_m[i] = ippl::Index(this->nr_m[i]);
         }
 
-
-        this->decomp_m.fill(true);
-        this->rmin_m  = 0.0;
-        this->rmax_m  = 50000.0;//2 * pi / this->kw_m; //50000.0;
-
-        this->hr_m = this->rmax_m / this->nr_m;
-        // M = -\int\int f dx dv
-        this->M_m = std::reduce(this->rmax_m.begin(), this->rmax_m.end(), 1., std::multiplies<double>());
-        mes << "total mass: " << this->M_m << endl;
-        this->origin_m = this->rmin_m;
-
-        this->Hubble0 =  73.8; // 73.8 km/sec/Mpc
+        this->Hubble0 =  0.0738; // km/sec/kpc
+        this->G = 4.3009e04; // kpc km^2 /s^2 / M_Sun e10
         this->Omega0 = 1.02;
         this->z_m = 64;
         this->InitialiseTime();
 
-        //this->time_m   = 0.0;
-        //this->dt_m     = std::min(.05, 0.5 * *std::min_element(this->hr_m.begin(), this->hr_m.end()));
+
+        this->decomp_m.fill(true);
+        this->rmin_m  = 0.0;
+        this->rmax_m  = 50000.0; // kpc/h
+        //this->M_m = std::reduce(this->rmax_m.begin(), this->rmax_m.end(), 1., std::multiplies<double>());
+        double Vol = std::reduce(this->rmax_m.begin(), this->rmax_m.end(), 1., std::multiplies<double>());
+        this->M_m = this->rho_crit0 * Vol; // M_Sun
+        mes << "total mass: " << this->M_m << endl;
+
+        this->hr_m = this->rmax_m / this->nr_m;
+        this->origin_m = this->rmin_m;
         this->it_m     = 0;
         
 
@@ -101,7 +100,7 @@ public:
         IpplTimings::stopTimer(DummySolveTimer);
         this->par2grid();
 
-        savePositions();
+        //savePositions();
 
         static IpplTimings::TimerRef SolveTimer = IpplTimings::getTimer("solve");
         IpplTimings::startTimer(SolveTimer);
@@ -179,20 +178,15 @@ public:
             ParticleVelocities.push_back(VelRow);
         }
 
-        // Number of Particles 
-        unsigned int NumPart = *max_element(ParticleID.begin(), ParticleID.end());
-        if (NumPart != ParticleID.size())
-            cerr << "Error: Number of Particles does not match indices" << endl;
-        else
-            mes << "Number of Particles: " << NumPart << endl;
-
         // Boundaries of Particle Positions
         mes << "Minimum Position: " << MinPos << endl;
         mes << "Maximum Position: " << MaxPos << endl;
 
+        // Number of Particles 
+        unsigned int NumPart = *max_element(ParticleID.begin(), ParticleID.end());
         if (this->totalP_m != NumPart || NumPart != ParticleID.size()){
             cerr << "Error: Simulation number of particles does not match input!" << endl;
-            cerr << "Input N = " << NumPart << ", Simulation N = " << this->totalP_m << endl;
+            cerr << "Input N = " << ParticleID.size() << ", Max ID = " << NumPart << ", Simulation N = " << this->totalP_m << endl;
         }    
         else 
             mes << "successfully done." << endl;
@@ -266,7 +260,7 @@ public:
 
         // kick (update V)
         IpplTimings::startTimer(VTimer);
-        pc->V = pc->V - dt * (0.5/(a*a) * pc->F + this->Hubble_m * pc->V);
+        pc->V = pc->V + dt * (2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
         IpplTimings::stopTimer(VTimer);
 
         // drift (update R) in comoving distances
@@ -304,15 +298,24 @@ public:
 
         // kick (update V)
         IpplTimings::startTimer(VTimer);
-        pc->V = pc->V - dt * (0.5/(a*a) * pc->F + this->Hubble_m * pc->V);
+        pc->V = pc->V + dt * (2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
         IpplTimings::stopTimer(VTimer);
+
+        if((this->it_m)%100 == 0){
+            savePositions(this->it_m / 100);
+        }
 
     }
 
-    void savePositions() {
+    void savePositions(unsigned int index) {
         Inform mes("Saving Particles");
+        mes << "snapshot " << this->it_m << endl;
 
-        ofstream file("data/Positions.csv");
+        stringstream ss;
+        ss << "snapshot" << std::setfill('0') << std::setw(3) << index;
+        string filename = ss.str();
+
+        ofstream file("data/" + filename + ".csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {

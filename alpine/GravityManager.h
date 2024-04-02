@@ -49,6 +49,8 @@ protected:
     double a_m; // scaling factor
     double Hubble_m; // Hubble constant [s^-1]
     double Hubble0; // 73.8 km/sec/Mpc
+    double G; // Gravity constant
+    double rho_crit0;
     double Omega0;
     double a_factor; // (9*H0^2 Omega0/4)^1/3
     double z_m;
@@ -99,10 +101,17 @@ public:
     void seta(double a_) {a_m = a_; }
 
     void InitialiseTime(){
-        this->time_m = 2/(3*this->Hubble0 * sqrt(this->Omega0))*pow(1+this->z_m, -2.0/3.0); // sec*Mpc/km
-        this->dt_m     = (2/(3*this->Hubble0 * sqrt(this->Omega0)) - this->time_m)/100; // sec*Mpc/km
-        this->a_factor = pow(9*this->Hubble0*this->Hubble0 *this->Omega0/4, 1./3.); // (9*H0^2 Omega0/4)^1/3
+        Inform mes("Inititalise: ");
+        this->time_m = 2/(3 * this->Hubble0 * sqrt(this->Omega0))*pow(1+this->z_m, -2.0/3.0); // sec*Mpc/km
+        this->dt_m     = (2/(3 * this->Hubble0 * sqrt(this->Omega0)) - this->time_m)/10000; // sec*Mpc/km
+        mes << "time: " << this->time_m << ", timestep: " << this->dt_m << endl;
+        this->a_factor = pow(9 * this->Hubble0*this->Hubble0 * this->Omega0/4, 1./3.); // (9*H0^2 Omega0/4)^1/3
         this->a_m = 1/(1+this->z_m);
+        this->Hubble_m = 2/(3 * this->time_m); // km / s/ Mpc
+        this->rho_crit0 = 3 * this->Hubble0 * this->Hubble0 / (8*M_PI * this->G);
+        mes << "z: " << this->z_m << ", scaling factor: " << this->a_m << endl;
+        mes << "H0: " << this->Hubble0 << ", H_initial: " << this->Hubble_m << endl;
+        mes << "crititcal density (today): " << this->rho_crit0 << endl;
     }
 
     virtual void dump() { /* default does nothing */ };
@@ -117,8 +126,8 @@ public:
         this->time_m += this->dt_m;
         this->it_m++;
         // update expansion
-        this->a_m = this->a_factor*pow(this->time_m, 2./3.);
-        this->Hubble_m = 2/(3*this->time_m); // km / s/ Mpc
+        this->a_m = this->a_factor * pow(this->time_m, 2./3.);
+        this->Hubble_m = 2/(3 * this->time_m); // km / s/ Mpc
         this->z_m = 1/this->a_m -1;
         // write solution to output file
         this->dump();
@@ -138,34 +147,32 @@ public:
 
     void scatterCIC() {
         Inform mes("scatter ");
+        mes << "starting ..." << endl;
         this->fcontainer_m->getRho() = 0.0;
 
         ippl::ParticleAttrib<double> *m = &this->pcontainer_m->m;
         typename Base::particle_position_type *R = &this->pcontainer_m->R;
         Field_t<Dim> *rho               = &this->fcontainer_m->getRho();
-        double M                        = M_m;
         Vector_t<double, Dim> rmin	= rmin_m;
         Vector_t<double, Dim> rmax	= rmax_m;
         Vector_t<double, Dim> hr        = hr_m;
 
         scatter(*m, *rho, *R);
-        double relError = std::fabs((M-(*rho).sum())/M);
-        mes << relError << endl;
+        double relError = std::fabs((M_m-(*rho).sum())/M_m);
+        mes << "relative error: " << relError << endl;
 
-
-        //std::shared_ptr<FieldContainer_t> fc    = this->fcontainer_m;
         double a = a_m; // scaling factor of expansion
-        mes << "a " << a << endl;
+        mes << "a = " << a << endl;
 
         // Normalise Rho due to expansion
-        (*rho) = (*rho) / (a*a*a);
+        //(*rho) = (*rho) / (a*a*a);
 
         // Update RHS
         double Vol = 1.;
         for (unsigned d = 0; d < Dim; d++) {
             Vol *= a*(rmax[d] - rmin[d]);
         }
-        double Rho_bar = M/Vol ;    // average density 
+        double Rho_bar = M_m/Vol ;    // average density 
         Field_t<Dim> *RHS               = &this->fcontainer_m->getRHS();
         *RHS = -4*M_PI*G*a*a*(*rho - Rho_bar);
 
@@ -183,11 +190,11 @@ public:
                 mes << "Rel. error in charge conservation: " << relError << endl;
                 ippl::Comm->abort();
             }
-	}
+	    }
 
-	double cellVolume = std::reduce(hr.begin(), hr.end(), 1., std::multiplies<double>());
+        // Convert mass assignment to actual mass density
+	    double cellVolume = std::reduce(hr.begin(), hr.end(), 1., std::multiplies<double>());
         (*rho)          = (*rho) / cellVolume;
-
         rhoNorm_m = norm(*rho);
 
         // rho = rho_e - rho_i (only if periodic BCs)
@@ -196,7 +203,7 @@ public:
             for (unsigned d = 0; d < Dim; d++) {
                 size *= rmax[d] - rmin[d];
             }
-            *rho = *rho - (M / size);
+            *rho = *rho - (M_m / size);
         }
    }
 };
