@@ -11,7 +11,6 @@ class LoadBalancer{
     private:
         double loadbalancethreshold_m;
         Field_t<Dim>* rho_m;
-        Field_t<Dim>* RHS_m;
         VField_t<T, Dim>* F_m;
         Field<T, Dim> *phi_m;
         std::shared_ptr<ParticleContainer<T, Dim>> pc_m;
@@ -20,7 +19,7 @@ class LoadBalancer{
         ORB<T, Dim> orb;
     public:
         LoadBalancer(double lbs, std::shared_ptr<FieldContainer<T,Dim>> &fc, std::shared_ptr<ParticleContainer<T, Dim>> &pc, std::shared_ptr<FieldSolver_t> &fs)
-           :loadbalancethreshold_m(lbs), rho_m(&fc->getRho()), RHS_m(&fc->getRHS()), F_m(&fc->getF()), phi_m(&fc->getPhi()), pc_m(pc), fs_m(fs) {}
+           :loadbalancethreshold_m(lbs), rho_m(&fc->getRho()), F_m(&fc->getF()), phi_m(&fc->getPhi()), pc_m(pc), fs_m(fs) {}
 
         ~LoadBalancer() {  }
 
@@ -29,9 +28,6 @@ class LoadBalancer{
 
         Field_t<Dim>* getRho() const { return rho_m; }
         void setRho(Field_t<Dim>* rho) { rho_m = rho; }
-
-        Field_t<Dim>* getRHS() const { return RHS_m; }
-        void setRHS(Field_t<Dim>* RHS) { RHS_m = RHS; }
 
         VField_t<T, Dim>* getF() const { return F_m; }
         void setE(VField_t<T, Dim>* F) { F_m = F; }
@@ -52,7 +48,6 @@ class LoadBalancer{
             IpplTimings::startTimer(tupdateLayout);
             (*F_m).updateLayout(*fl);
             (*rho_m).updateLayout(*fl);
-            (*RHS_m).updateLayout(*fl);
 
             if (fs_m->getStype() == "CG") {
                 phi_m->updateLayout(*fl);

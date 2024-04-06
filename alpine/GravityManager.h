@@ -47,12 +47,15 @@ protected:
     double time_m;
     double dt_m;
     double a_m; // scaling factor
+    double Dloga;
     double Hubble_m; // Hubble constant [s^-1]
     double Hubble0; // 73.8 km/sec/Mpc
     double G; // Gravity constant
     double rho_crit0;
     double Omega0;
-    double a_factor; // (9*H0^2 Omega0/4)^1/3
+    double O_m;
+    double O_L;
+    double t_L;
     double z_m;
     int it_m;
     //Vector_t<double, Dim> kw_m;
@@ -96,18 +99,30 @@ public:
 
     void setTime(double time_) { time_m = time_; }
 
-    double geta() const {return a_m; }
+    double calculateTime(double a) {
+        return this->t_L * asinh(sqrt(pow(a, 3)* this->O_L / this->O_m));
+    }
 
-    void seta(double a_) {a_m = a_; }
+    double calculateScaling(double t){
+        return pow(this->O_m/this->O_L, 1./3.)*pow(sinh(t/this->t_L), 2./3.);
+    }
 
     void InitialiseTime(){
         Inform mes("Inititalise: ");
-        this->time_m = 2/(3 * this->Hubble0 * sqrt(this->Omega0))*pow(1+this->z_m, -2.0/3.0); // sec*Mpc/km
-        this->dt_m     = (2/(3 * this->Hubble0 * sqrt(this->Omega0)) - this->time_m)/10000; // sec*Mpc/km
-        mes << "time: " << this->time_m << ", timestep: " << this->dt_m << endl;
-        this->a_factor = pow(9 * this->Hubble0*this->Hubble0 * this->Omega0/4, 1./3.); // (9*H0^2 Omega0/4)^1/3
+        this->O_m = 0.315;
+        this->O_L = 0.685;
+        this->t_L = 2/(3*this->Hubble0*sqrt(this->O_L));
         this->a_m = 1/(1+this->z_m);
-        this->Hubble_m = 2/(3 * this->time_m); // km / s/ Mpc
+        this->Dloga = pow(1+this->z_m, 1. / this->nt_m);
+        //this->time_m = this->t_L * asinh(sqrt(pow(this->a_m, 3)*O_L/O_m));
+        this->time_m = this->calculateTime(this->a_m);
+        this->dt_m = this->calculateTime(this->Dloga * this->a_m) - this->time_m;
+        //this->dt_m = (this->t_L * asinh(sqrt(O_L/O_m)) - this->time_m)/10000;
+        //this->time_m = 2/(3 * this->Hubble0 * sqrt(this->Omega0))*pow(1+this->z_m, -2.0/3.0); // sec*Mpc/km
+        mes << "time: " << this->time_m << ", timestep: " << this->dt_m << endl;
+        mes << "a factor: " << this->Dloga << endl;
+        //this->Hubble_m = 2/(3 * this->time_m); // km / s/ Mpc
+        this->Hubble_m = 2/(3*this->t_L)*cosh(this->time_m/this->t_L)/sinh(this->time_m/this->t_L);
         this->rho_crit0 = 3 * this->Hubble0 * this->Hubble0 / (8*M_PI * this->G);
         mes << "z: " << this->z_m << ", scaling factor: " << this->a_m << endl;
         mes << "H0: " << this->Hubble0 << ", H_initial: " << this->Hubble_m << endl;
@@ -122,18 +137,24 @@ public:
     }
 
     void post_step() override {
+        Inform mes("Post-step:");
         // Update time
         this->time_m += this->dt_m;
         this->it_m++;
         // update expansion
-        this->a_m = this->a_factor * pow(this->time_m, 2./3.);
-        this->Hubble_m = 2/(3 * this->time_m); // km / s/ Mpc
+        //this->a_m = pow(this->O_m/this->O_L, 1./3.)*pow(sinh(this->time_m/this->t_L), 2./3.);
+        this->a_m = this->calculateScaling(this->time_m);
         this->z_m = 1/this->a_m -1;
+        this->Hubble_m = 2/(3*this->t_L)*cosh(this->time_m/this->t_L)/sinh(this->time_m/this->t_L);
         // write solution to output file
         this->dump();
 
-        Inform mes("Post-step:");
-        mes << "Finished time step: " << this->it_m << " time: " << this->time_m << " z: " << this->z_m << endl;
+        // dynamic time step
+        this->dt_m = this->calculateTime(this->Dloga * this->a_m) - this->time_m;
+
+        
+        mes << "Finished time step: " << this->it_m << endl;
+        mes << " time: " << this->time_m << ", z: " << this->z_m << ", a: " << this->a_m << endl;
     }
 
     void grid2par() override { gatherCIC(); }
@@ -160,22 +181,6 @@ public:
         scatter(*m, *rho, *R);
         double relError = std::fabs((M_m-(*rho).sum())/M_m);
         mes << "relative error: " << relError << endl;
-
-        double a = a_m; // scaling factor of expansion
-        mes << "a = " << a << endl;
-
-        // Normalise Rho due to expansion
-        //(*rho) = (*rho) / (a*a*a);
-
-        // Update RHS
-        double Vol = 1.;
-        for (unsigned d = 0; d < Dim; d++) {
-            Vol *= a*(rmax[d] - rmin[d]);
-        }
-        double Rho_bar = M_m/Vol ;    // average density 
-        Field_t<Dim> *RHS               = &this->fcontainer_m->getRHS();
-        *RHS = -4*M_PI*G*a*a*(*rho - Rho_bar);
-
 
         size_type TotalParticles = 0;
         size_type localParticles = this->pcontainer_m->getLocalNum();

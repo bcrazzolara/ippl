@@ -9,7 +9,6 @@ template <typename T, unsigned Dim>
 class FieldSolver : public ippl::FieldSolverBase<T, Dim> {
   private:
     Field_t<Dim> *rho_m;
-    Field_t<Dim> *RHS_m;
     VField_t<T, Dim> *F_m;
     Field<T, Dim> *phi_m;
 
@@ -26,9 +25,6 @@ class FieldSolver : public ippl::FieldSolverBase<T, Dim> {
 
     Field_t<Dim> *getRho() const { return rho_m; }
     void setRho(Field_t<Dim> *rho){ rho_m = rho; }
-
-    Field_t<Dim> *getRHS() const { return RHS_m; }
-    void setRHS(Field_t<Dim> *RHS){ RHS_m = RHS; }
 
     VField_t<T, Dim> *getF() const { return F_m; }
     void setF(VField_t<T, Dim> *F){ F_m = F; }

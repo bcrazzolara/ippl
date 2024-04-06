@@ -29,7 +29,6 @@ private:
     std::array<bool, Dim> decomp_m;
     VField_t<T, Dim> F_m;
     Field_t<Dim> rho_m;
-    Field_t<Dim> RHS_m;
     Field<T, Dim> phi_m;
     Mesh_t<Dim> mesh_m;
     FieldLayout_t<Dim> fl_m;
@@ -40,9 +39,6 @@ public:
 
     Field_t<Dim>& getRho() { return rho_m; }
     void setRho(Field_t<Dim>& rho) { rho_m = rho; }
-
-    Field_t<Dim>& getRHS() { return RHS_m; }
-    void setRHS(Field_t<Dim>& RHS) { RHS_m = RHS; }
 
     Field<T, Dim>& getPhi() { return phi_m; }
     void setPhi(Field<T, Dim>& phi) { phi_m = phi; }
@@ -68,7 +64,6 @@ public:
     void initializeFields(std::string stype_m = "") {
         F_m.initialize(mesh_m, fl_m);
         rho_m.initialize(mesh_m, fl_m);
-        RHS_m.initialize(mesh_m, fl_m);
         if (stype_m == "CG") {
             phi_m.initialize(mesh_m, fl_m);
         }

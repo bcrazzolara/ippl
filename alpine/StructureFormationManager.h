@@ -51,10 +51,10 @@ public:
             this->domain_m[i] = ippl::Index(this->nr_m[i]);
         }
 
-        this->Hubble0 =  0.0738; // km/sec/kpc
+        this->Hubble0 =  0.1; // h * km/sec/kpc  (h = 0.7, H = 0.0738)
         this->G = 4.3009e04; // kpc km^2 /s^2 / M_Sun e10
         this->Omega0 = 1.02;
-        this->z_m = 64;
+        this->z_m = 63;
         this->InitialiseTime();
 
 
@@ -69,7 +69,7 @@ public:
         this->hr_m = this->rmax_m / this->nr_m;
         this->origin_m = this->rmin_m;
         this->it_m     = 0;
-        
+
 
         mes << "Discretization:" << endl
           << "nt " << this->nt_m << ", Np = " << this->totalP_m << ", grid = " << this->nr_m << endl;
@@ -94,7 +94,6 @@ public:
         IpplTimings::startTimer(DummySolveTimer);
         
         this->fcontainer_m->getRho() = 0.0;
-        this->fcontainer_m->getRHS() = 0.0;
         this->fsolver_m->runSolver();
 
         IpplTimings::stopTimer(DummySolveTimer);
@@ -120,7 +119,7 @@ public:
     void readParticles() {
         Inform mes("Reading Particles");
 
-        ifstream file("data/Data.csv");
+        ifstream file("data/IC_lsf_small.csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
@@ -192,12 +191,15 @@ public:
             mes << "successfully done." << endl;
 
         size_type nloc = this->totalP_m / ippl::Comm->size();
-        this->pcontainer_m->create(nloc);
+        std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
+
+        pc->create(nloc);
         //ippl::Comm->rank() == 0       
         this->pcontainer_m->m = this->M_m/this->totalP_m;
         
-        auto Rview = this->pcontainer_m->R.getView();
-        auto Vview = this->pcontainer_m->V.getView();
+        auto Rview = pc->R.getView();
+        auto Vview = pc->V.getView();
+        //double a = this->a_m;
 
         Kokkos::parallel_for(
             "Assign initial R", ippl::getRangePolicy(Rview),
@@ -211,6 +213,12 @@ public:
             });
 
         Kokkos::fence();
+        ippl::Comm->barrier();
+
+        // Since the particles have moved spatially update them to correct processors
+        pc->update();
+
+
         mes << "Assignment of positions and velocities done." << endl;
 
         /*
@@ -260,7 +268,7 @@ public:
 
         // kick (update V)
         IpplTimings::startTimer(VTimer);
-        pc->V = pc->V + dt * (2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
+        pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
         IpplTimings::stopTimer(VTimer);
 
         // drift (update R) in comoving distances
@@ -298,11 +306,11 @@ public:
 
         // kick (update V)
         IpplTimings::startTimer(VTimer);
-        pc->V = pc->V + dt * (2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
+        pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
         IpplTimings::stopTimer(VTimer);
 
-        if((this->it_m)%100 == 0){
-            savePositions(this->it_m / 100);
+        if((this->it_m)%500 == 0){
+            savePositions(this->it_m / 500);
         }
 
     }
@@ -312,7 +320,7 @@ public:
         mes << "snapshot " << this->it_m << endl;
 
         stringstream ss;
-        ss << "snapshot" << std::setfill('0') << std::setw(3) << index;
+        ss << "snapshot_lsf_big" << std::setfill('0') << std::setw(3) << index;
         string filename = ss.str();
 
         ofstream file("data/" + filename + ".csv");

@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
         // Perform pre-run operations, including creating mesh, particles,...
         manager.pre_run();
 
-        manager.setTime(0.0);
+        //manager.setTime(0.0);
 
         msg << "Starting iterations ..." << endl;
 
