@@ -57,7 +57,6 @@ protected:
     double t_L;
     double z_m;
     int it_m;
-    //Vector_t<double, Dim> kw_m;
     Vector_t<double, Dim> rmin_m; // comoving coord. [kpc/h]
     Vector_t<double, Dim> rmax_m; // comoving coord. [kpc/h]
     Vector_t<double, Dim> hr_m;
@@ -99,32 +98,36 @@ public:
     void setTime(double time_) { time_m = time_; }
 
     double calculateTime(double a) {
-        return this->t_L * asinh(sqrt(pow(a, 3)* this->O_L / this->O_m));
+        return this->t_L * asinh(sqrt(pow(a, 3)* this->O_L / this->O_m)); // inverse function of calculateScaling
     }
-
     double calculateScaling(double t){
-        return pow(this->O_m/this->O_L, 1./3.)*pow(sinh(t/this->t_L), 2./3.);
+        return pow(this->O_m/this->O_L, 1./3.)*pow(sinh(t/this->t_L), 2./3.); // https://arxiv.org/pdf/0803.0982.pdf (p. 6)
+    }
+    double calculateHubble(double a){
+        return this->Hubble0 * sqrt( this->O_m / pow(a, 3) + this->O_L );
     }
 
     void InitialiseTime(){
         Inform mes("Inititalise: ");
-        this->O_m = 0.315;
-        this->O_L = 0.685;
+        this->O_m = 0.3;
+        this->O_L = 0.7;
         this->t_L = 2/(3*this->Hubble0*sqrt(this->O_L));
         this->a_m = 1/(1+this->z_m);
-        this->Dloga = pow(1+this->z_m, 1. / this->nt_m);
-        //this->time_m = this->t_L * asinh(sqrt(pow(this->a_m, 3)*O_L/O_m));
+        this->Dloga = log(pow(1+this->z_m, 1. / this->nt_m));
+
         this->time_m = this->calculateTime(this->a_m);
-        this->dt_m = this->calculateTime(this->Dloga * this->a_m) - this->time_m;
-        //this->dt_m = (this->t_L * asinh(sqrt(O_L/O_m)) - this->time_m)/10000;
+        this->Hubble_m = this->calculateHubble(this->a_m); // Hubble parameter at starting time
+        this->dt_m = this->Dloga / this->Hubble_m;
+
+        
+        this->rho_crit0 = 3 * this->Hubble0 * this->Hubble0 / (8*M_PI * this->G); // critical density today
+
+        // Print initial parameters
         mes << "time: " << this->time_m << ", timestep: " << this->dt_m << endl;
-        mes << "a factor: " << this->Dloga << endl;
-        //this->Hubble_m = 2/(3 * this->time_m); // km / s/ Mpc
-        this->Hubble_m = 2/(3*this->t_L)*cosh(this->time_m/this->t_L)/sinh(this->time_m/this->t_L);
-        this->rho_crit0 = 3 * this->Hubble0 * this->Hubble0 / (8*M_PI * this->G);
+        mes << "Dloga: " << this->Dloga << endl;
         mes << "z: " << this->z_m << ", scaling factor: " << this->a_m << endl;
         mes << "H0: " << this->Hubble0 << ", H_initial: " << this->Hubble_m << endl;
-        mes << "crititcal density (today): " << this->rho_crit0 << endl;
+        mes << "critical density (today): " << this->rho_crit0 << endl;
     }
 
     virtual void dump() { /* default does nothing */ };
@@ -140,19 +143,18 @@ public:
         this->time_m += this->dt_m;
         this->it_m++;
         // update expansion
-        //this->a_m = pow(this->O_m/this->O_L, 1./3.)*pow(sinh(this->time_m/this->t_L), 2./3.);
         this->a_m = this->calculateScaling(this->time_m);
         this->z_m = 1/this->a_m -1;
-        this->Hubble_m = 2/(3*this->t_L)*cosh(this->time_m/this->t_L)/sinh(this->time_m/this->t_L);
+        this->Hubble_m = this->calculateHubble(this->a_m); 
         // write solution to output file
         this->dump();
 
         // dynamic time step
-        this->dt_m = this->calculateTime(this->Dloga * this->a_m) - this->time_m;
+        this->dt_m = this->Dloga / this->Hubble_m;
 
         
         mes << "Finished time step: " << this->it_m << endl;
-        mes << " time: " << this->time_m << ", z: " << this->z_m << ", a: " << this->a_m << endl;
+        mes << " time: " << this->time_m << ", timestep: " << this->dt_m << ", z: " << this->z_m << ", a: " << this->a_m << endl;
     }
 
     void grid2par() override { gatherCIC(); }
