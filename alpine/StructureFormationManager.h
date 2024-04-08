@@ -53,7 +53,6 @@ public:
 
         this->Hubble0 =  0.1; // h * km/sec/kpc  (h = 0.7, H = 0.0738)
         this->G = 4.3009e04; // kpc km^2 /s^2 / M_Sun e10
-        this->Omega0 = 1.02;
         this->z_m = 63;
         this->InitialiseTime();
 

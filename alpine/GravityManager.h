@@ -52,7 +52,6 @@ protected:
     double Hubble0; // 73.8 km/sec/Mpc
     double G; // Gravity constant
     double rho_crit0;
-    double Omega0;
     double O_m;
     double O_L;
     double t_L;
@@ -118,7 +117,6 @@ public:
         this->time_m = this->calculateTime(this->a_m);
         this->dt_m = this->calculateTime(this->Dloga * this->a_m) - this->time_m;
         //this->dt_m = (this->t_L * asinh(sqrt(O_L/O_m)) - this->time_m)/10000;
-        //this->time_m = 2/(3 * this->Hubble0 * sqrt(this->Omega0))*pow(1+this->z_m, -2.0/3.0); // sec*Mpc/km
         mes << "time: " << this->time_m << ", timestep: " << this->dt_m << endl;
         mes << "a factor: " << this->Dloga << endl;
         //this->Hubble_m = 2/(3 * this->time_m); // km / s/ Mpc
