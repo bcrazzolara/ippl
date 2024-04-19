@@ -140,10 +140,12 @@ public:
     void post_step() override {
         Inform mes("Post-step:");
         // Update time
-        this->time_m += this->dt_m;
+        //this->time_m += this->dt_m;
         this->it_m++;
         // update expansion
-        this->a_m = this->calculateScaling(this->time_m);
+        //this->a_m = this->calculateScaling(this->time_m);
+        this->a_m = this->a_m * exp(this->Dloga);
+        this->time_m = calculateTime(this->a_m);
         this->z_m = 1/this->a_m -1;
         this->Hubble_m = this->calculateHubble(this->a_m); 
         // write solution to output file

@@ -22,6 +22,8 @@ using namespace std;
 #include "Random/NormalDistribution.h"
 #include "Random/Randn.h"
 
+string folder = "data/lsf_small/";
+
 using view_type = typename ippl::detail::ViewType<ippl::Vector<double, Dim>, 1>::view_type;
 //typedef ippl::ParticleSpatialLayout<double, Dim> PLayout_t;
 
@@ -51,8 +53,8 @@ public:
             this->domain_m[i] = ippl::Index(this->nr_m[i]);
         }
 
-        this->Hubble0 =  0.1; // h * km/sec/kpc  (h = 0.7, H = 0.0738)
-        this->G = 4.3009e04; // kpc km^2 /s^2 / M_Sun e10
+        this->Hubble0 =  0.1; // h * km/sec/kpc  (h = 0.7, H = 0.07)
+        this->G = 4.30071e04; // kpc km^2 /s^2 / M_Sun e10
         this->z_m = 63;
         this->InitialiseTime();
 
@@ -60,10 +62,10 @@ public:
         this->decomp_m.fill(true);
         this->rmin_m  = 0.0;
         this->rmax_m  = 50000.0; // kpc/h
-        //this->M_m = std::reduce(this->rmax_m.begin(), this->rmax_m.end(), 1., std::multiplies<double>());
         double Vol = std::reduce(this->rmax_m.begin(), this->rmax_m.end(), 1., std::multiplies<double>());
-        this->M_m = this->rho_crit0 * Vol; // M_Sun
+        this->M_m = this->rho_crit0 * Vol * this->O_m; // 1e10 M_Sun
         mes << "total mass: " << this->M_m << endl;
+        mes << "mass of a single particle " << this->M_m/this->totalP_m << endl;
 
         this->hr_m = this->rmax_m / this->nr_m;
         this->origin_m = this->rmin_m;
@@ -118,7 +120,7 @@ public:
     void readParticles() {
         Inform mes("Reading Particles");
 
-        ifstream file("data/IC_lsf_small.csv");
+        ifstream file(folder + "Data.csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
@@ -147,7 +149,6 @@ public:
             while (j < 7 && getline(ss, cell, ',')) {
                 if (j == 0){
                     double indexD = stod(cell);
-                    //printf("index %f \n", indexD );
                     unsigned int index = (int)indexD;//static_cast<unsigned int>(std::round(indexD));
                     ParticleID.push_back(index);
                 }
@@ -170,7 +171,6 @@ public:
                     VelRow.push_back(Vel);
                 }
                 ++j;
-                //R_host(index)[j-1] = stoi(cell);
             }
             ParticlePositions.push_back(PosRow);
             ParticleVelocities.push_back(VelRow);
@@ -198,7 +198,7 @@ public:
         
         auto Rview = pc->R.getView();
         auto Vview = pc->V.getView();
-        //double a = this->a_m;
+        double a = this->a_m;
 
         Kokkos::parallel_for(
             "Assign initial R", ippl::getRangePolicy(Rview),
@@ -206,9 +206,9 @@ public:
                 Rview(i)[0] = ParticlePositions[i][0];
                 Rview(i)[1] = ParticlePositions[i][1];
                 Rview(i)[2] = ParticlePositions[i][2];
-                Vview(i)[0] = ParticleVelocities[i][0];
-                Vview(i)[1] = ParticleVelocities[i][1];
-                Vview(i)[2] = ParticleVelocities[i][2];
+                Vview(i)[0] = ParticleVelocities[i][0]*pow(a, 1.5);
+                Vview(i)[1] = ParticleVelocities[i][1]*pow(a, 1.5);
+                Vview(i)[2] = ParticleVelocities[i][2]*pow(a, 1.5);
             });
 
         Kokkos::fence();
@@ -219,26 +219,6 @@ public:
 
 
         mes << "Assignment of positions and velocities done." << endl;
-
-        /*
-        using Playout = ippl::ParticleSpatialLayout<T, Dim>;
-        using Base = ippl::ParticleBase<Playout>;
-        typename Base::particle_position_type::HostMirror R_host = this->pcontainer_m->R.getHostMirror();
-        typename Base::particle_position_type::HostMirror P_host = this->pcontainer_m->P.getHostMirror();
-        mes << "typenames done. " << endl;
-        for (unsigned long int i = 0; i < nloc; i++) {
-            for (unsigned d = 0; d < Dim; d++) {
-                mes << "part pos " << i << " " << d << " " << ParticlePositions[i][d] << endl;
-                mes << "r host " << R_host(i)[d] << endl;
-                R_host(i)[d] = ParticlePositions[i][d];
-                P_host(i)[d] = ParticleVelocities[i][d];
-            }
-        }
-        // Copy to device
-        Kokkos::deep_copy(this->pcontainer_m->R.getView(), R_host);
-        Kokkos::deep_copy(this->pcontainer_m->P.getView(), P_host);
-        mes << "assignment done. " << endl;
-        */
 
     }
 
@@ -260,19 +240,34 @@ public:
         static IpplTimings::TimerRef domainDecomposition = IpplTimings::getTimer("loadBalance");
         static IpplTimings::TimerRef SolveTimer       = IpplTimings::getTimer("solve");
 
-        double dt                               = this->dt_m;
-        double a                                = this->a_m;
+        //double dt                               = this->dt_m;
+        double a                               = this->a_m;
+
+        double a_i = this->a_m;
+        double a_half = a*exp(0.5*this->Dloga);
+        double a_f = a*exp(this->Dloga);
+
+        double H_i = this->calculateHubble(a_i);
+        double H_half = this->calculateHubble(a_half);
+        double H_f = this->calculateHubble(a_f);
+        double d_drift, d_kick;
+
         std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
         std::shared_ptr<FieldContainer_t> fc    = this->fcontainer_m;
 
         // kick (update V)
         IpplTimings::startTimer(VTimer);
-        pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
+        d_kick = 1./4*(1/(H_i * a_i) + 1/(H_half * a_half))*this->Dloga;
+        //pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
+        //pc->V = pc->V - 0.5 * dt * 4 * this->G * M_PI / a * pc->F;
+        pc->V = pc->V - 4 * this->G * M_PI * pc->F * d_kick;
         IpplTimings::stopTimer(VTimer);
 
         // drift (update R) in comoving distances
         IpplTimings::startTimer(RTimer);
-        pc->R = pc->R + dt * pc->V;
+        d_drift = 1./6*(1/(H_i * a_i * a_i) + 4/(H_half * a_half * a_half) + 1/(H_f * a_f * a_f))*this->Dloga;
+        //pc->R = pc->R + dt / (a*a) * pc->V;
+        pc->R = pc->R + pc->V * d_drift;
         IpplTimings::stopTimer(RTimer);
 
         // Since the particles have moved spatially update them to correct processors
@@ -305,11 +300,14 @@ public:
 
         // kick (update V)
         IpplTimings::startTimer(VTimer);
-        pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
+        d_kick = 1./4*(1/(H_half * a_half) + 1/(H_f * a_f))*this->Dloga;
+        //pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
+        //pc->V = pc->V - 0.5 * dt * 4 * this->G * M_PI / a * pc->F;
+        pc->V = pc->V - 4 * this->G * M_PI * pc->F * d_kick;
         IpplTimings::stopTimer(VTimer);
 
-        if((this->it_m)%500 == 0){
-            savePositions(this->it_m / 500);
+        if((this->it_m)%100 == 0){
+            savePositions(this->it_m / 100);
         }
 
     }
@@ -319,10 +317,11 @@ public:
         mes << "snapshot " << this->it_m << endl;
 
         stringstream ss;
-        ss << "snapshot_lsf_big" << std::setfill('0') << std::setw(3) << index;
+        ss << "snapshot_" << std::setfill('0') << std::setw(3) << index;
         string filename = ss.str();
 
-        ofstream file("data/" + filename + ".csv");
+        //ofstream file("data/" + filename + ".csv");
+        ofstream file(folder + filename + ".csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
@@ -332,15 +331,21 @@ public:
 
         auto Rview = this->pcontainer_m->R.getView();
         auto Vview = this->pcontainer_m->V.getView();
+        double a = this->a_m;
+        //auto Acc = - 4*M_PI * this->G / (a*a) * this->pcontainer_m->F;
+        auto Fview = this->pcontainer_m->F.getView();
+
 
         // Write data to the file
         for (unsigned int i = 0; i < Rview.size(); ++i){
             file << i << ",";
             for (unsigned int d = 0; d < Dim; ++d)
                 file << Rview(i)[d] << ",";
-            for (unsigned int d = 0; d < Dim-1; ++d)
+            for (unsigned int d = 0; d < Dim; ++d)
                 file << Vview(i)[d] << ",";
-            file << Vview(i)[Dim-1] << "\n";
+            for (unsigned int d = 0; d < Dim; ++d)
+                file << - 4*M_PI * this->G / (a*a) * Fview(i)[d] << ",";
+            file << this->a_m << "\n";
         }
 
         // Close the file stream
