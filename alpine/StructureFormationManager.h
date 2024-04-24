@@ -200,16 +200,14 @@ public:
         auto Vview = pc->V.getView();
         double a = this->a_m;
 
-        Kokkos::parallel_for(
-            "Assign initial R", ippl::getRangePolicy(Rview),
-            KOKKOS_LAMBDA(const int i) {
-                Rview(i)[0] = ParticlePositions[i][0];
-                Rview(i)[1] = ParticlePositions[i][1];
-                Rview(i)[2] = ParticlePositions[i][2];
-                Vview(i)[0] = ParticleVelocities[i][0]*pow(a, 1.5);
-                Vview(i)[1] = ParticleVelocities[i][1]*pow(a, 1.5);
-                Vview(i)[2] = ParticleVelocities[i][2]*pow(a, 1.5);
-            });
+	    for (unsigned int i = 0; i < this->totalP_m; ++i) {
+            Rview(i)[0] = ParticlePositions[i][0];
+            Rview(i)[1] = ParticlePositions[i][1];
+            Rview(i)[2] = ParticlePositions[i][2];
+            Vview(i)[0] = ParticleVelocities[i][0]*pow(a, 1.5);
+            Vview(i)[1] = ParticleVelocities[i][1]*pow(a, 1.5);
+            Vview(i)[2] = ParticleVelocities[i][2]*pow(a, 1.5);
+        }
 
         Kokkos::fence();
         ippl::Comm->barrier();
