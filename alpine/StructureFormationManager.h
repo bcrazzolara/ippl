@@ -22,7 +22,7 @@ using namespace std;
 #include "Random/NormalDistribution.h"
 #include "Random/Randn.h"
 
-string folder = "data/lsf_small/";
+string folder = "data/lsf_64/";
 
 using view_type = typename ippl::detail::ViewType<ippl::Vector<double, Dim>, 1>::view_type;
 //typedef ippl::ParticleSpatialLayout<double, Dim> PLayout_t;
@@ -53,13 +53,12 @@ public:
             this->domain_m[i] = ippl::Index(this->nr_m[i]);
         }
 
+        this->decomp_m.fill(true);
         this->Hubble0 =  0.1; // h * km/sec/kpc  (h = 0.7, H = 0.07)
         this->G = 4.30071e04; // kpc km^2 /s^2 / M_Sun e10
         this->z_m = 63;
         this->InitialiseTime();
 
-
-        this->decomp_m.fill(true);
         this->rmin_m  = 0.0;
         this->rmax_m  = 50000.0; // kpc/h
         double Vol = std::reduce(this->rmax_m.begin(), this->rmax_m.end(), 1., std::multiplies<double>());
@@ -95,12 +94,12 @@ public:
         IpplTimings::startTimer(DummySolveTimer);
         
         this->fcontainer_m->getRho() = 0.0;
+        //this->fcontainer_m->getRho().write();
+        //ippl::Comm->barrier();
         this->fsolver_m->runSolver();
 
         IpplTimings::stopTimer(DummySolveTimer);
         this->par2grid();
-
-        //savePositions();
 
         static IpplTimings::TimerRef SolveTimer = IpplTimings::getTimer("solve");
         IpplTimings::startTimer(SolveTimer);
@@ -113,12 +112,32 @@ public:
 
         this->dump();
         
-
         mes << "Done";
     }
     
     void readParticles() {
         Inform mes("Reading Particles");
+
+        size_type nloc = this->totalP_m / ippl::Comm->size(); 
+        mes << "Local number of particles: " << nloc << endl; 
+        std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
+        pc->create(nloc);  
+        pc->m = this->M_m/this->totalP_m;
+
+        this->fcontainer_m->getRho() = 0.0;
+
+        // Load Balancer Initialisation
+        auto *mesh = &this->fcontainer_m->getMesh();
+        auto *FL = &this->fcontainer_m->getFL();
+        if ((this->lbt_m != 1.0) && (ippl::Comm->size() > 1)) {
+            mes << "Starting first repartition" << endl;
+            this->isFirstRepartition_m           = true;
+            this->loadbalancer_m->initializeORB(FL, mesh);
+            this->loadbalancer_m->repartition(FL, mesh, this->isFirstRepartition_m);
+        }
+
+        static IpplTimings::TimerRef ReadingTimer = IpplTimings::getTimer("Read Data");
+        IpplTimings::startTimer(ReadingTimer);
 
         ifstream file(folder + "Data.csv");
 
@@ -126,7 +145,6 @@ public:
         if (!file.is_open()) {
             cerr << "Error opening IC file!" << endl;
         }
-        
         
         // Vector to store data read from the CSV file
         vector<unsigned int> ParticleID;
@@ -181,41 +199,49 @@ public:
         mes << "Maximum Position: " << MaxPos << endl;
 
         // Number of Particles 
-        unsigned int NumPart = *max_element(ParticleID.begin(), ParticleID.end());
-        if (this->totalP_m != NumPart || NumPart != ParticleID.size()){
+        if (this->totalP_m != ParticleID.size()){
             cerr << "Error: Simulation number of particles does not match input!" << endl;
-            cerr << "Input N = " << ParticleID.size() << ", Max ID = " << NumPart << ", Simulation N = " << this->totalP_m << endl;
+            cerr << "Input N = " << ParticleID.size() << ", Simulation N = " << this->totalP_m << endl;
         }    
         else 
             mes << "successfully done." << endl;
 
-        size_type nloc = this->totalP_m / ippl::Comm->size();
-        std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
 
-        pc->create(nloc);
-        //ippl::Comm->rank() == 0       
-        this->pcontainer_m->m = this->M_m/this->totalP_m;
-        
-        auto Rview = pc->R.getView();
-        auto Vview = pc->V.getView();
+        auto R_host = pc->R.getHostMirror();
+        auto V_host = pc->V.getHostMirror();
+
         double a = this->a_m;
-
-	    for (unsigned int i = 0; i < this->totalP_m; ++i) {
-            Rview(i)[0] = ParticlePositions[i][0];
-            Rview(i)[1] = ParticlePositions[i][1];
-            Rview(i)[2] = ParticlePositions[i][2];
-            Vview(i)[0] = ParticleVelocities[i][0]*pow(a, 1.5);
-            Vview(i)[1] = ParticleVelocities[i][1]*pow(a, 1.5);
-            Vview(i)[2] = ParticleVelocities[i][2]*pow(a, 1.5);
+        unsigned int j;
+        for (unsigned int i = 0; i < nloc; ++i) {
+            j = i*ippl::Comm->size() + ippl::Comm->rank();
+            R_host(i)[0] = ParticlePositions[j][0];
+            R_host(i)[1] = ParticlePositions[j][1];
+            R_host(i)[2] = ParticlePositions[j][2];
+            V_host(i)[0] = ParticleVelocities[j][0]*pow(a, 1.5);
+            V_host(i)[1] = ParticleVelocities[j][1]*pow(a, 1.5);
+            V_host(i)[2] = ParticleVelocities[j][2]*pow(a, 1.5);
         }
 
+        Kokkos::deep_copy(pc->R.getView(), R_host);
+        Kokkos::deep_copy(pc->V.getView(), V_host);
         Kokkos::fence();
         ippl::Comm->barrier();
 
         // Since the particles have moved spatially update them to correct processors
         pc->update();
 
+        bool isFirstRepartition = false;
+        std::shared_ptr<FieldContainer_t> fc    = this->fcontainer_m;
+        if (this->loadbalancer_m->balance(this->totalP_m, this->it_m)) {
+                //IpplTimings::startTimer(domainDecomposition);
+                auto* mesh = &fc->getRho().get_mesh();
+                auto* FL = &fc->getFL();
+                this->loadbalancer_m->repartition(FL, mesh, isFirstRepartition);
+                printf("first repartition works \n");
+                //IpplTimings::stopTimer(domainDecomposition);
+        }
 
+        IpplTimings::stopTimer(ReadingTimer);
         mes << "Assignment of positions and velocities done." << endl;
 
     }
@@ -240,7 +266,6 @@ public:
 
         //double dt                               = this->dt_m;
         double a                               = this->a_m;
-
         double a_i = this->a_m;
         double a_half = a*exp(0.5*this->Dloga);
         double a_f = a*exp(this->Dloga);
@@ -252,19 +277,15 @@ public:
 
         std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
         std::shared_ptr<FieldContainer_t> fc    = this->fcontainer_m;
-
         // kick (update V)
         IpplTimings::startTimer(VTimer);
         d_kick = 1./4*(1/(H_i * a_i) + 1/(H_half * a_half))*this->Dloga;
-        //pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
-        //pc->V = pc->V - 0.5 * dt * 4 * this->G * M_PI / a * pc->F;
         pc->V = pc->V - 4 * this->G * M_PI * pc->F * d_kick;
         IpplTimings::stopTimer(VTimer);
 
         // drift (update R) in comoving distances
         IpplTimings::startTimer(RTimer);
         d_drift = 1./6*(1/(H_i * a_i * a_i) + 4/(H_half * a_half * a_half) + 1/(H_f * a_f * a_f))*this->Dloga;
-        //pc->R = pc->R + dt / (a*a) * pc->V;
         pc->R = pc->R + pc->V * d_drift;
         IpplTimings::stopTimer(RTimer);
 
@@ -299,8 +320,6 @@ public:
         // kick (update V)
         IpplTimings::startTimer(VTimer);
         d_kick = 1./4*(1/(H_half * a_half) + 1/(H_f * a_f))*this->Dloga;
-        //pc->V = pc->V + dt * (-2*M_PI/(a*a*a)* this->G * pc->F - this->Hubble_m * pc->V);
-        //pc->V = pc->V - 0.5 * dt * 4 * this->G * M_PI / a * pc->F;
         pc->V = pc->V - 4 * this->G * M_PI * pc->F * d_kick;
         IpplTimings::stopTimer(VTimer);
 
@@ -312,13 +331,19 @@ public:
 
     void savePositions(unsigned int index) {
         Inform mes("Saving Particles");
+
+        static IpplTimings::TimerRef SavingTimer = IpplTimings::getTimer("Save Data");
+        IpplTimings::startTimer(SavingTimer);
+
         mes << "snapshot " << this->it_m << endl;
 
         stringstream ss;
-        ss << "snapshot_" << std::setfill('0') << std::setw(3) << index;
+        if(ippl::Comm->size() == 1)
+            ss << "snapshot_" << std::setfill('0') << std::setw(3) << index;
+        else 
+            ss << "snapshot_" << ippl::Comm->rank() << "_" << std::setfill('0') << std::setw(3) << index; 
         string filename = ss.str();
 
-        //ofstream file("data/" + filename + ".csv");
         ofstream file(folder + filename + ".csv");
 
         // Check if the file is opened successfully
@@ -329,28 +354,126 @@ public:
 
         auto Rview = this->pcontainer_m->R.getView();
         auto Vview = this->pcontainer_m->V.getView();
-        double a = this->a_m;
-        //auto Acc = - 4*M_PI * this->G / (a*a) * this->pcontainer_m->F;
         auto Fview = this->pcontainer_m->F.getView();
+
+        auto R_host = this->pcontainer_m->R.getHostMirror();
+        auto V_host = this->pcontainer_m->V.getHostMirror();
+        auto F_host = this->pcontainer_m->F.getHostMirror();
+
+        Kokkos::deep_copy(R_host, Rview);
+        Kokkos::deep_copy(V_host, Vview);
+        Kokkos::deep_copy(F_host, Fview);
+
+        double a = this->a_m;
 
 
         // Write data to the file
         for (unsigned int i = 0; i < Rview.size(); ++i){
-            file << i << ",";
+            //file << i << ",";
             for (unsigned int d = 0; d < Dim; ++d)
-                file << Rview(i)[d] << ",";
+                file << R_host(i)[d] << ",";
             for (unsigned int d = 0; d < Dim; ++d)
-                file << Vview(i)[d] << ",";
+                file << V_host(i)[d] << ",";
             for (unsigned int d = 0; d < Dim; ++d)
-                file << - 4*M_PI * this->G / (a*a) * Fview(i)[d] << ",";
-            file << this->a_m << "\n";
+                file << - 4*M_PI * this->G / (a*a) * F_host(i)[d] << ",";
+            //file << this->a_m << "\n";
+            file << "\n";
         }
 
         // Close the file stream
         file.close();
         mes << "done." << endl;
+        IpplTimings::stopTimer(SavingTimer);
 
     }
+
+    /*
+    void savePositionsHDF5(unsigned int index) {
+
+        Inform mes("Saving Particles");
+
+        static IpplTimings::TimerRef SavingTimer = IpplTimings::getTimer("Save Data");
+        IpplTimings::startTimer(SavingTimer);
+
+        mes << "snapshot " << this->it_m << endl;
+
+        stringstream ss;
+        ss << "snapshot_" << std::setfill('0') << std::setw(3) << index;
+        string filename = ss.str();
+
+        //ofstream file("data/" + filename + ".csv");
+        //ofstream file(folder + filename + ".csv");
+
+
+        const std::string FILE_NAME = folder + filename + ".h5"; //"data.h5";
+        const std::string DATASET_NAME = "particle_data";
+   
+        auto Rview = this->pcontainer_m->R.getView();
+        auto Vview = this->pcontainer_m->V.getView();
+        auto Fview = this->pcontainer_m->F.getView();
+
+        auto R_host = this->pcontainer_m->R.getHostMirror();
+        auto V_host = this->pcontainer_m->V.getHostMirror();
+        auto F_host = this->pcontainer_m->F.getHostMirror();
+
+        Kokkos::deep_copy(R_host, Rview);
+        Kokkos::deep_copy(V_host, Vview);
+        Kokkos::deep_copy(F_host, Fview);
+
+        //const unsigned int N = 100; // Number of particles
+        unsigned int N = Rview.size();
+        const unsigned int N_col = 9;
+
+        // Create or open HDF5 file
+        hid_t file = H5Fcreate(FILE_NAME.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+        if (file < 0) {
+            std::cerr << "Failed to create HDF5 file." << std::endl;
+            //return -1;
+        }
+
+        // Create a dataspace for the dataset
+        hsize_t dims[2] = {N, N_col}; // Number of rows and columns
+        hid_t dataspace = H5Screate_simple(2, dims, NULL);
+
+        // Create the dataset
+        hid_t dataset = H5Dcreate2(file, DATASET_NAME.c_str(), H5T_NATIVE_DOUBLE, dataspace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        if (dataset < 0) {
+            std::cerr << "Failed to create dataset." << std::endl;
+            H5Fclose(file);
+            //return -1;
+        }
+
+        double a = this->a_m;
+
+        // Generate some data to save (e.g., particle data)
+        std::vector<double> particleData(N * Dim);
+        for (unsigned int i = 0; i < N; ++i) {
+                // Populate particle data directly
+                particleData[i * Dim] = R_host(i)[0];
+                particleData[i * Dim + 1] = R_host(i)[1];
+                particleData[i * Dim + 2] = R_host(i)[2];
+                particleData[i * Dim + 3] = V_host(i)[0];
+                particleData[i * Dim + 4] = V_host(i)[1];
+                particleData[i * Dim + 5] = V_host(i)[2];
+                particleData[i * Dim + 6] = - 4*M_PI * this->G / (a*a) * F_host(i)[0];
+                particleData[i * Dim + 7] = - 4*M_PI * this->G / (a*a) * F_host(i)[1];
+                particleData[i * Dim + 8] = - 4*M_PI * this->G / (a*a) * F_host(i)[2];
+        }
+
+        // Write data to the dataset
+        H5Dwrite(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, particleData.data());
+
+        // Close resources
+        H5Dclose(dataset);
+        H5Sclose(dataspace);
+        H5Fclose(file);
+
+        // Close the file stream
+        mes << "done." << endl;
+        IpplTimings::stopTimer(SavingTimer);
+
+    }
+    */
 
 
     void dump() override {
@@ -393,7 +516,7 @@ public:
 
         if (ippl::Comm->rank() == 0) {
             std::stringstream fname;
-            fname << "data/FieldStructure_";
+            fname << folder + "FieldStructure_";
             fname << ippl::Comm->size();
             fname << "_manager";
             fname << ".csv";
