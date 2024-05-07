@@ -194,7 +194,7 @@ public:
                 mes << "Time step: " << it_m << endl;
                 mes << "Total particles in the sim. " << totalP_m << " "
                   << "after update: " << TotalParticles << endl;
-                mes << "Rel. error in charge conservation: " << relError << endl;
+                mes << "Rel. error in mass conservation: " << relError << endl;
                 ippl::Comm->abort();
             }
 	    }
