@@ -22,7 +22,7 @@ using namespace std;
 #include "Random/NormalDistribution.h"
 #include "Random/Randn.h"
 
-string folder = "data/lsf_64/";
+string folder = "/data/user/crazzo_b/IPPL/ippl/build_openmp/alpine/data/lsf_16/";
 
 using view_type = typename ippl::detail::ViewType<ippl::Vector<double, Dim>, 1>::view_type;
 //typedef ippl::ParticleSpatialLayout<double, Dim> PLayout_t;
@@ -147,7 +147,6 @@ public:
         }
         
         // Vector to store data read from the CSV file
-        vector<unsigned int> ParticleID;
         vector<vector<double>> ParticlePositions;
         vector<vector<double>> ParticleVelocities;
         double MaxPos;
@@ -164,13 +163,8 @@ public:
             vector<double> PosRow;
             vector<double> VelRow;
             unsigned int i = 0;
-            while (j < 7 && getline(ss, cell, ',')) {
-                if (j == 0){
-                    double indexD = stod(cell);
-                    unsigned int index = (int)indexD;//static_cast<unsigned int>(std::round(indexD));
-                    ParticleID.push_back(index);
-                }
-                else if (j < 4){
+            while (j < 6 && getline(ss, cell, ',')) {
+                if (j < 3){
                     double Pos = stod(cell);
                     PosRow.push_back(Pos);
                     // Find Boundaries (x, y, z)
@@ -197,11 +191,12 @@ public:
         // Boundaries of Particle Positions
         mes << "Minimum Position: " << MinPos << endl;
         mes << "Maximum Position: " << MaxPos << endl;
+        mes << "Defined maximum:  " << this->rmax_m << endl;
 
         // Number of Particles 
-        if (this->totalP_m != ParticleID.size()){
+        if (this->totalP_m != ParticlePositions.size()){
             cerr << "Error: Simulation number of particles does not match input!" << endl;
-            cerr << "Input N = " << ParticleID.size() << ", Simulation N = " << this->totalP_m << endl;
+            cerr << "Input N = " << ParticlePositions.size() << ", Simulation N = " << this->totalP_m << endl;
         }    
         else 
             mes << "successfully done." << endl;
@@ -226,6 +221,7 @@ public:
         Kokkos::deep_copy(pc->V.getView(), V_host);
         Kokkos::fence();
         ippl::Comm->barrier();
+        IpplTimings::stopTimer(ReadingTimer);
 
         // Since the particles have moved spatially update them to correct processors
         pc->update();
@@ -233,15 +229,13 @@ public:
         bool isFirstRepartition = false;
         std::shared_ptr<FieldContainer_t> fc    = this->fcontainer_m;
         if (this->loadbalancer_m->balance(this->totalP_m, this->it_m)) {
-                //IpplTimings::startTimer(domainDecomposition);
                 auto* mesh = &fc->getRho().get_mesh();
                 auto* FL = &fc->getFL();
                 this->loadbalancer_m->repartition(FL, mesh, isFirstRepartition);
                 printf("first repartition works \n");
-                //IpplTimings::stopTimer(domainDecomposition);
         }
 
-        IpplTimings::stopTimer(ReadingTimer);
+        
         mes << "Assignment of positions and velocities done." << endl;
 
     }
@@ -351,6 +345,7 @@ public:
             cerr << "Error opening saving file!" << endl;
             return;
         }
+        std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
 
         auto Rview = this->pcontainer_m->R.getView();
         auto Vview = this->pcontainer_m->V.getView();
@@ -368,17 +363,16 @@ public:
 
 
         // Write data to the file
-        for (unsigned int i = 0; i < Rview.size(); ++i){
-            //file << i << ",";
+        for (unsigned int i = 0; i < pc->getLocalNum(); ++i){
             for (unsigned int d = 0; d < Dim; ++d)
                 file << R_host(i)[d] << ",";
             for (unsigned int d = 0; d < Dim; ++d)
                 file << V_host(i)[d] << ",";
             for (unsigned int d = 0; d < Dim; ++d)
                 file << - 4*M_PI * this->G / (a*a) * F_host(i)[d] << ",";
-            //file << this->a_m << "\n";
             file << "\n";
         }
+        ippl::Comm->barrier();
 
         // Close the file stream
         file.close();
