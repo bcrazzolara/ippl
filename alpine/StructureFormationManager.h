@@ -317,9 +317,9 @@ public:
         pc->V = pc->V - 4 * this->G * M_PI * pc->F * d_kick;
         IpplTimings::stopTimer(VTimer);
 
-        if((this->it_m)%100 == 0){
-            savePositions(this->it_m / 100);
-        }
+        //if((this->it_m)%100 == 0){
+        //    savePositions(this->it_m / 100);
+        //}
 
     }
 
