@@ -81,7 +81,12 @@ int main(int argc, char* argv[]) {
 
         IpplTimings::stopTimer(mainTimer);
         IpplTimings::print();
-        IpplTimings::print(std::string(folder + "timing.dat"));
+
+        stringstream ss;
+        ss << "timing_" << ippl::Comm->size() << ".dat"; 
+        string filename = ss.str();
+
+        IpplTimings::print(folder + filename);
     }
     ippl::finalize();
 
