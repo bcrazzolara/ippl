@@ -9,7 +9,6 @@
 #include <vector>
 #include <iomanip>
 
-using namespace std;
 
 #include "GravityFieldContainer.hpp"
 #include "GravityFieldSolver.hpp"
@@ -22,7 +21,7 @@ using namespace std;
 #include "Random/NormalDistribution.h"
 #include "Random/Randn.h"
 
-string folder = "/data/user/crazzo_b/IPPL/ippl/build_openmp/alpine/data/lsf_16/";
+std::string folder = "./data/lsf_32/";
 
 using view_type = typename ippl::detail::ViewType<ippl::Vector<double, Dim>, 1>::view_type;
 //typedef ippl::ParticleSpatialLayout<double, Dim> PLayout_t;
@@ -139,38 +138,38 @@ public:
         static IpplTimings::TimerRef ReadingTimer = IpplTimings::getTimer("Read Data");
         IpplTimings::startTimer(ReadingTimer);
 
-        ifstream file(folder + "Data.csv");
+        std::ifstream file(folder + "Data.csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
-            cerr << "Error opening IC file!" << endl;
+            std::cerr << "Error opening IC file!" << std::endl;
         }
         
         // Vector to store data read from the CSV file
-        vector<vector<double>> ParticlePositions;
-        vector<vector<double>> ParticleVelocities;
+        std::vector<std::vector<double>> ParticlePositions;
+        std::vector<std::vector<double>> ParticleVelocities;
         double MaxPos;
         double MinPos;
 
         // Read the file line by line
-        string line;
-        while (getline(file, line)) {
-            stringstream ss(line);
+        std::string line;
+        while (std::getline(file, line)) {
+            std::stringstream ss(line);
 
             // Read each comma-separated value into the row vector
-            string cell;
+            std::string cell;
             unsigned int j = 0;
-            vector<double> PosRow;
-            vector<double> VelRow;
+            std::vector<double> PosRow;
+            std::vector<double> VelRow;
             unsigned int i = 0;
-            while (j < 6 && getline(ss, cell, ',')) {
+            while (j < 6 && std::getline(ss, cell, ',')) {
                 if (j < 3){
-                    double Pos = stod(cell);
+                    double Pos = std::stod(cell);
                     PosRow.push_back(Pos);
                     // Find Boundaries (x, y, z)
                     if(i > 0){
-                        MaxPos = max(Pos, MaxPos);
-                        MinPos = min(Pos, MinPos);
+                        MaxPos = std::max(Pos, MaxPos);
+                        MinPos = std::min(Pos, MinPos);
                     }
                     else{
                         MaxPos = Pos;
@@ -179,7 +178,7 @@ public:
                     }
                 }
                 else {
-                    double Vel = stod(cell);
+                    double Vel = std::stod(cell);
                     VelRow.push_back(Vel);
                 }
                 ++j;
@@ -195,8 +194,8 @@ public:
 
         // Number of Particles 
         if (this->totalP_m != ParticlePositions.size()){
-            cerr << "Error: Simulation number of particles does not match input!" << endl;
-            cerr << "Input N = " << ParticlePositions.size() << ", Simulation N = " << this->totalP_m << endl;
+            std::cerr << "Error: Simulation number of particles does not match input!" << std::endl;
+            std::cerr << "Input N = " << ParticlePositions.size() << ", Simulation N = " << this->totalP_m << std::endl;
         }    
         else 
             mes << "successfully done." << endl;
@@ -331,18 +330,18 @@ public:
 
         mes << "snapshot " << this->it_m << endl;
 
-        stringstream ss;
+        std::stringstream ss;
         if(ippl::Comm->size() == 1)
             ss << "snapshot_" << std::setfill('0') << std::setw(3) << index;
         else 
             ss << "snapshot_" << ippl::Comm->rank() << "_" << std::setfill('0') << std::setw(3) << index; 
-        string filename = ss.str();
+        std::string filename = ss.str();
 
-        ofstream file(folder + filename + ".csv");
+        std::ofstream file(folder + filename + ".csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
-            cerr << "Error opening saving file!" << endl;
+            std::cerr << "Error opening saving file!" << std::endl;
             return;
         }
         std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
