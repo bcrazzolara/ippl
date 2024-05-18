@@ -21,8 +21,6 @@
 #include "Random/NormalDistribution.h"
 #include "Random/Randn.h"
 
-std::string folder = "./data/lsf_32/";
-
 using view_type = typename ippl::detail::ViewType<ippl::Vector<double, Dim>, 1>::view_type;
 //typedef ippl::ParticleSpatialLayout<double, Dim> PLayout_t;
 
@@ -138,7 +136,7 @@ public:
         static IpplTimings::TimerRef ReadingTimer = IpplTimings::getTimer("Read Data");
         IpplTimings::startTimer(ReadingTimer);
 
-        std::ifstream file(folder + "Data.csv");
+        std::ifstream file(this->folder + "Data.csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
@@ -337,7 +335,7 @@ public:
             ss << "snapshot_" << ippl::Comm->rank() << "_" << std::setfill('0') << std::setw(3) << index; 
         std::string filename = ss.str();
 
-        std::ofstream file(folder + filename + ".csv");
+        std::ofstream file(this->folder + filename + ".csv");
 
         // Check if the file is opened successfully
         if (!file.is_open()) {
@@ -509,7 +507,7 @@ public:
 
         if (ippl::Comm->rank() == 0) {
             std::stringstream fname;
-            fname << folder + "FieldStructure_";
+            fname << this->folder + "FieldStructure_";
             fname << ippl::Comm->size();
             fname << "_manager";
             fname << ".csv";

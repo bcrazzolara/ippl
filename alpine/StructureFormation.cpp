@@ -49,6 +49,8 @@ int main(int argc, char* argv[]) {
 
         // Read input parameters, assign them to the corresponding memebers of manager
         int arg = 1;
+        // initial conditions folder 
+        std::string ic_folder = argv[arg++];
         // Number of particles in each dimension
         Vector_t<int, Dim> nr;
         for (unsigned d = 0; d < Dim; d++) {
@@ -60,13 +62,16 @@ int main(int argc, char* argv[]) {
         int nt  = std::atoi(argv[arg++]);
         // Solver method
         std::string solver = argv[arg++];
-        //
+        // Load Balance Threshold
         double lbt = std::atof(argv[arg++]);
         // step method
         std::string step_method = argv[arg++];
 
         // Create an instance of a manger for the considered application
         StructureFormationManager<T, Dim> manager(totalP, nt, nr, lbt, solver, step_method);
+        
+        // set initial conditions folder
+        manager.setIC(ic_folder);
 
         // Perform pre-run operations, including creating mesh, particles,...
         manager.pre_run();
@@ -82,11 +87,11 @@ int main(int argc, char* argv[]) {
         IpplTimings::stopTimer(mainTimer);
         IpplTimings::print();
 
-        stringstream ss;
+        std::stringstream ss;
         ss << "timing_" << ippl::Comm->size() << ".dat"; 
-        string filename = ss.str();
+        std::string filename = ss.str();
 
-        IpplTimings::print(folder + filename);
+        IpplTimings::print(manager.folder + filename);
     }
     ippl::finalize();
 

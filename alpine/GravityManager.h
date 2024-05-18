@@ -69,6 +69,8 @@ protected:
     double rhoNorm_m;
 
 public:
+    std::string folder;
+    
     size_type getTotalP() const { return totalP_m; }
 
     void setTotalP(size_type totalP_) { totalP_m = totalP_; }
@@ -96,6 +98,8 @@ public:
     double getTime() const { return time_m; }
 
     void setTime(double time_) { time_m = time_; }
+
+    void setIC(std::string ic_folder) {folder = ic_folder;}
 
     double calculateTime(double a) {
         return this->t_L * asinh(sqrt(pow(a, 3)* this->O_L / this->O_m)); // inverse function of calculateScaling
