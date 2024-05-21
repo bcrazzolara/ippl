@@ -151,38 +151,41 @@ public:
 
         // Read the file line by line
         std::string line;
+        int i = 0;
         while (std::getline(file, line)) {
             std::stringstream ss(line);
+            if(i % ippl::Comm->size() == ippl::Comm->rank()){
 
-            // Read each comma-separated value into the row vector
-            std::string cell;
-            unsigned int j = 0;
-            std::vector<double> PosRow;
-            std::vector<double> VelRow;
-            unsigned int i = 0;
-            while (j < 6 && std::getline(ss, cell, ',')) {
-                if (j < 3){
-                    double Pos = std::stod(cell);
-                    PosRow.push_back(Pos);
-                    // Find Boundaries (x, y, z)
-                    if(i > 0){
-                        MaxPos = std::max(Pos, MaxPos);
-                        MinPos = std::min(Pos, MinPos);
+                // Read each comma-separated value into the row vector
+                std::string cell;
+                int j = 0;
+                std::vector<double> PosRow;
+                std::vector<double> VelRow;
+                while (j < 6 && std::getline(ss, cell, ',')) {
+                    if (j < 3){
+                        double Pos = std::stod(cell);
+                        PosRow.push_back(Pos);
+                        ++j;
+                        // Find Boundaries (x, y, z)
+                        if(i+j > ippl::Comm->rank()){
+                            MaxPos = std::max(Pos, MaxPos);
+                            MinPos = std::min(Pos, MinPos);
+                        }
+                        else{ // very first input
+                            MaxPos = Pos;
+                            MinPos = Pos;
+                        }
                     }
-                    else{
-                        MaxPos = Pos;
-                        MinPos = Pos;
-                        ++i;
+                    else {
+                        double Vel = std::stod(cell);
+                        VelRow.push_back(Vel);
+                        ++j;
                     }
                 }
-                else {
-                    double Vel = std::stod(cell);
-                    VelRow.push_back(Vel);
-                }
-                ++j;
+                ParticlePositions.push_back(PosRow);
+                ParticleVelocities.push_back(VelRow);
             }
-            ParticlePositions.push_back(PosRow);
-            ParticleVelocities.push_back(VelRow);
+            ++i;
         }
 
         // Boundaries of Particle Positions
@@ -191,9 +194,9 @@ public:
         mes << "Defined maximum:  " << this->rmax_m << endl;
 
         // Number of Particles 
-        if (this->totalP_m != ParticlePositions.size()){
+        if (nloc != ParticlePositions.size()){
             std::cerr << "Error: Simulation number of particles does not match input!" << std::endl;
-            std::cerr << "Input N = " << ParticlePositions.size() << ", Simulation N = " << this->totalP_m << std::endl;
+            std::cerr << "Input N = " << ParticlePositions.size() << ", Local N = " << nloc << std::endl;
         }    
         else 
             mes << "successfully done." << endl;
@@ -203,15 +206,13 @@ public:
         auto V_host = pc->V.getHostMirror();
 
         double a = this->a_m;
-        unsigned int j;
         for (unsigned int i = 0; i < nloc; ++i) {
-            j = i*ippl::Comm->size() + ippl::Comm->rank();
-            R_host(i)[0] = ParticlePositions[j][0];
-            R_host(i)[1] = ParticlePositions[j][1];
-            R_host(i)[2] = ParticlePositions[j][2];
-            V_host(i)[0] = ParticleVelocities[j][0]*pow(a, 1.5);
-            V_host(i)[1] = ParticleVelocities[j][1]*pow(a, 1.5);
-            V_host(i)[2] = ParticleVelocities[j][2]*pow(a, 1.5);
+            R_host(i)[0] = ParticlePositions[i][0];
+            R_host(i)[1] = ParticlePositions[i][1];
+            R_host(i)[2] = ParticlePositions[i][2];
+            V_host(i)[0] = ParticleVelocities[i][0]*pow(a, 1.5);
+            V_host(i)[1] = ParticleVelocities[i][1]*pow(a, 1.5);
+            V_host(i)[2] = ParticleVelocities[i][2]*pow(a, 1.5);
         }
 
         Kokkos::deep_copy(pc->R.getView(), R_host);
