@@ -55,7 +55,8 @@ protected:
     double O_m;
     double O_L;
     double t_L;
-    double z_m;
+    double z_m; // intial z
+    double z_f; // final z
     int it_m;
     Vector_t<double, Dim> rmin_m; // comoving coord. [kpc/h]
     Vector_t<double, Dim> rmax_m; // comoving coord. [kpc/h]
@@ -117,7 +118,8 @@ public:
         this->O_L = 0.7;
         this->t_L = 2/(3*this->Hubble0*sqrt(this->O_L));
         this->a_m = 1/(1+this->z_m);
-        this->Dloga = log(pow(1+this->z_m, 1. / this->nt_m));
+        this->Dloga = 1. /(this->nt_m) * log((1+this->z_m)/(1+this->z_f));
+        //this->Dloga = log(pow(1+this->z_m, 1. / this->nt_m));
 
         this->time_m = this->calculateTime(this->a_m);
         this->Hubble_m = this->calculateHubble(this->a_m); // Hubble parameter at starting time

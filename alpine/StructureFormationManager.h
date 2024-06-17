@@ -53,7 +53,8 @@ public:
         this->decomp_m.fill(true);
         this->Hubble0 =  0.1; // h * km/sec/kpc  (h = 0.7, H = 0.07)
         this->G = 4.30071e04; // kpc km^2 /s^2 / M_Sun e10
-        this->z_m = 63;
+        this->z_m = 63; // initial z
+        this->z_f = 0; // final z
         this->InitialiseTime();
 
         this->rmin_m  = 0.0;
@@ -133,7 +134,7 @@ public:
             this->loadbalancer_m->repartition(FL, mesh, this->isFirstRepartition_m);
         }
 
-        static IpplTimings::TimerRef ReadingTimer = IpplTimings::getTimer("Read Data");
+        static IpplTimings::TimerRef ReadingTimer = IpplTimings::getTimer("readData");
         IpplTimings::startTimer(ReadingTimer);
 
         std::ifstream file(this->folder + "Data.csv");
@@ -215,6 +216,8 @@ public:
             V_host(i)[2] = ParticleVelocities[i][2]*pow(a, 1.5);
         }
 
+        Kokkos::fence();
+        ippl::Comm->barrier();
         Kokkos::deep_copy(pc->R.getView(), R_host);
         Kokkos::deep_copy(pc->V.getView(), V_host);
         Kokkos::fence();
@@ -315,9 +318,9 @@ public:
         pc->V = pc->V - 4 * this->G * M_PI * pc->F * d_kick;
         IpplTimings::stopTimer(VTimer);
 
-        //if((this->it_m)%100 == 0){
-        //    savePositions(this->it_m / 100);
-        //}
+        if((this->it_m)%100 == 99 && (this->it_m) > 0){
+            savePositions(this->it_m/100 + 1);
+        }
 
     }
 
