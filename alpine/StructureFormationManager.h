@@ -86,7 +86,7 @@ public:
 
         this->setLoadBalancer( std::make_shared<LoadBalancer_t>( this->lbt_m, this->fcontainer_m, this->pcontainer_m, this->fsolver_m) );
 
-        readParticles(); // defines particle positions, velocities
+        readParticlesDomain(); // defines particle positions, velocities
 
         static IpplTimings::TimerRef DummySolveTimer  = IpplTimings::getTimer("solveWarmup");
         IpplTimings::startTimer(DummySolveTimer);
@@ -241,6 +241,123 @@ public:
 
     }
 
+    void readParticlesDomain() {
+        Inform mes("Reading Particles");
+
+        this->fcontainer_m->getRho() = 0.0;
+
+        // Load Balancer Initialisation
+        auto *mesh = &this->fcontainer_m->getMesh();
+        auto *FL = &this->fcontainer_m->getFL();
+        if ((this->lbt_m != 1.0) && (ippl::Comm->size() > 1)) {
+            mes << "Starting first repartition" << endl;
+            this->isFirstRepartition_m           = true;
+            this->loadbalancer_m->initializeORB(FL, mesh);
+            this->loadbalancer_m->repartition(FL, mesh, this->isFirstRepartition_m);
+        }
+
+        static IpplTimings::TimerRef ReadingTimer = IpplTimings::getTimer("readData");
+        IpplTimings::startTimer(ReadingTimer);
+
+        
+        // Check if the file is opened successfully
+        std::ifstream file(this->folder + "Data.csv");
+        if (!file.is_open()) {
+            std::cerr << "Error opening IC file!" << std::endl;
+        }
+        
+        // Vector to store data read from the CSV file
+        std::vector<std::vector<double>> ParticlePositions;
+        std::vector<std::vector<double>> ParticleVelocities;
+
+        // Boundaries of Particle Positions
+        const ippl::NDIndex<Dim>& ldom = FL->getLocalNDIndex(); // local domain in coordinates [256:511:1] [0:511:1] [0:511:1]
+        Vector_t<double, Dim> Min;
+        Vector_t<double, Dim> Max;
+        for(unsigned int i = 0; i<Dim; ++i){
+            Min[i] = this->rmin_m[i] + ldom[i].first()*this->hr_m[i];
+            Max[i] = this->rmin_m[i] + (ldom[i].last()+1)*this->hr_m[i];
+            if(ldom[i].last()+1 == this->nr_m[i])
+                Max[i] += this->hr_m[i]; // extra buffer for edge cells to capture all particles
+        }
+        //std::cout << "rank: " << ippl::Comm->rank() << " x " << ldom[0] << " y " << ldom[1] << " z " << ldom[2] << std::endl; 
+        //std::cout << "rank: " << ippl::Comm->rank() << " Min: " << Min << " Max: " << Max << std::endl; 
+
+        // Read the file line by line
+        std::string line;
+        while (std::getline(file, line)) {
+            // New Line has begun
+            std::stringstream ss(line);
+            std::string cell;
+            int j = 0; // column number
+            std::vector<double> PosRow;
+            std::vector<double> VelRow;
+            bool inDomain = true;
+            while (inDomain==true && j < 6 && std::getline(ss, cell, ',')) {
+                if (j < 3){
+                    double Pos = std::stod(cell);
+                    if(Pos >= Min[j] && Pos<Max[j])
+                        PosRow.push_back(Pos); // particle is actually in domain -> add
+                    else
+                        inDomain = false; // particle is not in  domain -> leave while loop
+                    ++j;
+                }
+                else{
+                    double Vel = std::stod(cell);
+                    VelRow.push_back(Vel);
+                    ++j;
+                }
+            }
+            if(inDomain==true){
+                ParticlePositions.push_back(PosRow);
+                ParticleVelocities.push_back(VelRow);
+            }
+        }
+
+        // Create Particle container
+        size_type nloc = ParticlePositions.size(); 
+        std::cout << "rank: " << ippl::Comm->rank() << " Local number of particles: " << nloc << std::endl; 
+        std::shared_ptr<ParticleContainer_t> pc = this->pcontainer_m;
+        pc->create(nloc);  
+        pc->m = this->M_m/this->totalP_m;
+
+        auto R_host = pc->R.getHostMirror();
+        auto V_host = pc->V.getHostMirror();       
+        double a = this->a_m;
+        for (unsigned int i = 0; i < nloc; ++i) {
+            R_host(i)[0] = ParticlePositions[i][0];
+            R_host(i)[1] = ParticlePositions[i][1];
+            R_host(i)[2] = ParticlePositions[i][2];
+            V_host(i)[0] = ParticleVelocities[i][0]*pow(a, 1.5);
+            V_host(i)[1] = ParticleVelocities[i][1]*pow(a, 1.5);
+            V_host(i)[2] = ParticleVelocities[i][2]*pow(a, 1.5);
+        }
+
+        Kokkos::fence();
+        ippl::Comm->barrier();
+        Kokkos::deep_copy(pc->R.getView(), R_host);
+        Kokkos::deep_copy(pc->V.getView(), V_host);
+        Kokkos::fence();
+        ippl::Comm->barrier();
+        IpplTimings::stopTimer(ReadingTimer);
+
+        // Since the particles have moved spatially update them to correct processors
+        pc->update();
+
+        bool isFirstRepartition = false;
+        std::shared_ptr<FieldContainer_t> fc    = this->fcontainer_m;
+        if (this->loadbalancer_m->balance(this->totalP_m, this->it_m)) {
+                auto* mesh = &fc->getRho().get_mesh();
+                auto* FL = &fc->getFL();
+                this->loadbalancer_m->repartition(FL, mesh, isFirstRepartition);
+                printf("first repartition works \n");
+        }
+
+        
+        mes << "Assignment of positions and velocities done." << endl;
+
+    }
+
     void advance() override {
         if (this->stepMethod_m == "LeapFrog") {
             LeapFrogStep();
@@ -318,9 +435,9 @@ public:
         pc->V = pc->V - 4 * this->G * M_PI * pc->F * d_kick;
         IpplTimings::stopTimer(VTimer);
 
-        if((this->it_m)%100 == 99 && (this->it_m) > 0){
-            savePositions(this->it_m/100 + 1);
-        }
+        //if((this->it_m)%100 == 99 && (this->it_m) > 0){
+        //    savePositions(this->it_m/100 + 1);
+        //}
 
     }
 
