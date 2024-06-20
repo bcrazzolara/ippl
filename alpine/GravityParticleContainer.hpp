@@ -10,9 +10,9 @@ class ParticleContainer : public ippl::ParticleBase<ippl::ParticleSpatialLayout<
     using Base = ippl::ParticleBase<ippl::ParticleSpatialLayout<T, Dim>>;
 
     public:
-        ippl::ParticleAttrib<double> m;                 // charge
+        ippl::ParticleAttrib<double> m;                 // mass
         typename Base::particle_position_type V;  // particle velocity
-        typename Base::particle_position_type F;  // electric field at particle position
+        typename Base::particle_position_type F;  // gravitational field at particle position
     private:
         PLayout_t<T, Dim> pl_m;
     public:
