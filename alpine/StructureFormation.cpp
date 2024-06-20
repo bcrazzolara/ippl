@@ -1,11 +1,12 @@
 // StructureFormation Test
 //   Usage:
 //     srun ./StructureFormation
-//                  <nx> [<ny>...] <Np> <Nt> <stype>
+//                  <path> <nx> [<ny>...] <Np> <Nt> <stype>
 //                  <lbthres> --overallocate <ovfactor> --info 10
+//     path     = path to initial conditions folder containing the file Data.csv
 //     nx       = No. cell-centered points in the x-direction
 //     ny...    = No. cell-centered points in the y-, z-, ...-direction
-//     Np       = Total no. of macro-particles in the simulation
+//     Np       = Total no. of macro-particles in the simulation. Needs to match the IC file Data.csv
 //     Nt       = Number of time steps
 //     stype    = Field solver type (FFT and CG supported)
 //     lbthres  = Load balancing threshold i.e., lbthres*100 is the maximum load imbalance
@@ -15,7 +16,7 @@
 //     ovfactor = Over-allocation factor for the buffers used in the communication. Typical
 //                values are 1.0, 2.0. Value 1.0 means no over-allocation.
 //     Example:
-//     srun ./StructureFormation 32 32 32 10000 10 FFT 0.01 LeapFrog --overallocate 2.0 --info 5
+//     srun ./StructureFormation data/lsf_32/ 32 32 32 32768 10 FFT 1.0 LeapFrog --overallocate 1.0 --info 5 
 
 
 constexpr unsigned Dim = 3;
