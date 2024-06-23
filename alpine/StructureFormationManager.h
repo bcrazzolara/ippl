@@ -275,10 +275,10 @@ public:
         Vector_t<double, Dim> Min;
         Vector_t<double, Dim> Max;
         for(unsigned int i = 0; i<Dim; ++i){
-            Min[i] = this->rmin_m[i] + ldom[i].first()*this->hr_m[i];
-            Max[i] = this->rmin_m[i] + (ldom[i].last()+1)*this->hr_m[i];
-            if(ldom[i].last()+1 == this->nr_m[i])
-                Max[i] += this->hr_m[i]; // extra buffer for edge cells to capture all particles
+            Min[i] = this->rmax_m[i] * ldom[i].first() / this->nr_m[i];
+            Max[i] = this->rmax_m[i] * (ldom[i].last()+1) / this->nr_m[i];
+            //if(ldom[i].last()+1 == this->nr_m[i])
+                //Max[i] += 0.5*this->hr_m[i]; // extra buffer for edge cells to capture all particles
         }
         //std::cout << "rank: " << ippl::Comm->rank() << " x " << ldom[0] << " y " << ldom[1] << " z " << ldom[2] << std::endl; 
         //std::cout << "rank: " << ippl::Comm->rank() << " Min: " << Min << " Max: " << Max << std::endl; 
@@ -296,7 +296,16 @@ public:
             while (inDomain==true && j < 6 && std::getline(ss, cell, ',')) {
                 if (j < 3){
                     double Pos = std::stod(cell);
-                    if(Pos >= Min[j] && Pos<Max[j])
+                    // Special case where particle lies on the edge
+                    if (Pos == Max[j]){ 
+                        mes << "Particle was on edge. Shift position from " << Pos << " to " << Pos*0.9999 << endl; 
+                        Pos = 0.9999*Pos;
+                    }
+                    if (Pos == 0){
+                        mes << "Particle was on edge. Shift position from " << Pos << " to " << 0.0001*Max[j] << endl; 
+                        Pos = 0.0001*Max[j];
+                    }
+                    if(Pos > Min[j] && Pos<=Max[j])
                         PosRow.push_back(Pos); // particle is actually in domain -> add
                     else
                         inDomain = false; // particle is not in  domain -> leave while loop
