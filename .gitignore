@@ -9,3 +9,7 @@ manual/*.lot
 manual/ippl_user_guide.pdf
 *~
 *.~
+*.out
+*.err
+*.csv
+*.dat
